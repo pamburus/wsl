@@ -8,8 +8,11 @@ import (
 	"strings"
 )
 
+// ErrorType represents the kind of error from the linter to determine where to
+// add or remove a newline.
 type ErrorType int
 
+// The available error types.
 const (
 	WhitespaceShouldAddBefore ErrorType = iota
 	WhitespaceShouldAddAfter
@@ -118,7 +121,7 @@ type Configuration struct {
 
 	// If the number of lines in a case block is equal to or lager than this
 	// number, the case *must* end white a newline.
-	CaseForceTrailingWhitespaceLimit int
+	ForceCaseTrailingWhitespaceLimit int
 
 	// AllowTrailingComment will allow blocks to end with comments.
 	AllowTrailingComment bool
@@ -156,7 +159,7 @@ type Configuration struct {
 	//  mu.Unlock()
 	AllowCuddleWithRHS []string
 
-	// MustCuddleErrCheckAndAssign will cause an error when an If statement that
+	// ForceCuddleErrCheckAndAssign will cause an error when an If statement that
 	// checks an error variable doesn't cuddle with the assignment of that variable.
 	// This defaults to false but setting it to true will cause the following
 	// to generate an error:
@@ -166,9 +169,9 @@ type Configuration struct {
 	// if err != nil {
 	//     return err
 	// }
-	MustCuddleErrCheckAndAssign bool
+	ForceCuddleErrCheckAndAssign bool
 
-	// When MustCuddleErrCheckAndAssign is enabled this is a list of names
+	// When ForceCuddleErrCheckAndAssign is enabled this is a list of names
 	// used for error variables to check for in the conditional.
 	// Defaults to just "err"
 	ErrorVariableNames []string
@@ -182,6 +185,8 @@ type Result struct {
 	Type   ErrorType
 }
 
+// Processor is the type that keeps track of the file and fileset and holds the
+// results from parsing the AST.
 type Processor struct {
 	config   Configuration
 	file     *ast.File
@@ -190,7 +195,7 @@ type Processor struct {
 	Warnings []string
 }
 
-// NewProcessor will create a Processor.
+// NewProcessorWithConfig will create a Processor with the passed configuration.
 func NewProcessorWithConfig(file *ast.File, fileSet *token.FileSet, cfg Configuration) *Processor {
 	return &Processor{
 		config:  cfg,
@@ -208,14 +213,15 @@ func NewProcessor(file *ast.File, fileSet *token.FileSet) *Processor {
 			AllowAssignAndCallCuddle:         true,
 			AllowMultiLineAssignCuddle:       true,
 			AllowTrailingComment:             false,
-			MustCuddleErrCheckAndAssign:      false,
-			CaseForceTrailingWhitespaceLimit: 0,
+			ForceCuddleErrCheckAndAssign:     false,
+			ForceCaseTrailingWhitespaceLimit: 0,
 			AllowCuddleWithCalls:             []string{"Lock", "RLock"},
 			AllowCuddleWithRHS:               []string{"Unlock", "RUnlock"},
 			ErrorVariableNames:               []string{"err"},
 		})
 }
 
+// ParseAST will parse the AST attached to the Processor instance.
 func (p *Processor) ParseAST() {
 	for _, d := range p.file.Decls {
 		switch v := d.(type) {
@@ -270,7 +276,7 @@ func (p *Processor) parseBlockStatements(statements []ast.Stmt) {
 
 		// If we're not cuddled and we don't need to enforce err-check cuddling
 		// then we can bail out here
-		if !cuddledWithLastStmt && !p.config.MustCuddleErrCheckAndAssign {
+		if !cuddledWithLastStmt && !p.config.ForceCuddleErrCheckAndAssign {
 			continue
 		}
 
@@ -1087,9 +1093,9 @@ func (p *Processor) findLeadingAndTrailingWhitespaces(ident *ast.Ident, stmt, ne
 	hasTrailingWhitespace := p.nodeEnd(lastStatement)+caseTrailingCommentLines != blockEndLine
 
 	// If the force trailing limit is configured and we don't end with a newline.
-	if p.config.CaseForceTrailingWhitespaceLimit > 0 && !hasTrailingWhitespace {
+	if p.config.ForceCaseTrailingWhitespaceLimit > 0 && !hasTrailingWhitespace {
 		// Check if the block size is too big to miss the newline.
-		if blockSize >= p.config.CaseForceTrailingWhitespaceLimit {
+		if blockSize >= p.config.ForceCaseTrailingWhitespaceLimit {
 			if lastComment != nil {
 				p.addWhitespaceAfterError(lastComment, reasonCaseBlockTooCuddly)
 			} else {
