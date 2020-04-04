@@ -1,4 +1,4 @@
-module github.com/bombsimon/wsl/v2
+module github.com/bombsimon/wsl/v3
 
 go 1.12
 
