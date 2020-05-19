@@ -278,6 +278,9 @@ func (p *Processor) parseBlockBody(ident *ast.Ident, block *ast.BlockStmt) {
 // node. A list of Result is returned.
 // nolint: gocognit
 func (p *Processor) parseBlockStatements(statements []ast.Stmt) {
+	// Assigned variables in the current group of cuddled statements.
+	var assignedInCurrentGroup []string
+
 	for i, stmt := range statements {
 		// Start by checking if this statement is another block (other than if,
 		// for and range). This could be assignment to a function, defer or go
@@ -300,6 +303,8 @@ func (p *Processor) parseBlockStatements(statements []ast.Stmt) {
 		// If we're not cuddled and we don't need to enforce err-check cuddling
 		// then we can bail out here
 		if !cuddledWithLastStmt && !p.config.ForceCuddleErrCheckAndAssign {
+			// Reset accumulated variables assigned in the current group of cuddled statements.
+			assignedInCurrentGroup = []string{}
 			continue
 		}
 
@@ -329,6 +334,9 @@ func (p *Processor) parseBlockStatements(statements []ast.Stmt) {
 				assignedOnLineAbove = p.findLHS(previousStatement)
 			}
 		}
+
+		// Accumulate variables assigned in the current group of cuddled statements.
+		assignedInCurrentGroup = append(assignedInCurrentGroup, assignedOnLineAbove...)
 
 		// We could potentially have a block which require us to check the first
 		// argument before ruling out an allowed cuddle.
@@ -558,7 +566,30 @@ func (p *Processor) parseBlockStatements(statements []ast.Stmt) {
 			//  }
 			//  defer resp.Body.Close()
 			if _, ok := previousStatement.(*ast.IfStmt); ok {
-				if atLeastOneInListsMatch(rightHandSide, []string{"Close"}) {
+				if len(rightHandSide) == 0 {
+					// Allow such cases:
+					//  resp, err := client.Do(req)
+					//  if err != nil {
+					//      return err
+					//  }
+					//  defer func() {
+					//      _ = resp.Body.Close()
+					//  }()
+					continue
+				}
+				if atLeastOneInListsMatch(rightHandSide, assignedInCurrentGroup) {
+					// Allow such cases:
+					//  resp, err := client.Do(req)
+					//  if err != nil {
+					//      return err
+					//  }
+					//  defer resp.Body.Close()
+					// Or such cases:
+					//  ctx, cancel, err := NewCustomContext(ctx)
+					//  if err != nil {
+					//      return err
+					//  }
+					//  defer cancel()
 					continue
 				}
 			}
