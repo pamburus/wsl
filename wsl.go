@@ -566,17 +566,6 @@ func (p *Processor) parseBlockStatements(statements []ast.Stmt) {
 			//  }
 			//  defer resp.Body.Close()
 			if _, ok := previousStatement.(*ast.IfStmt); ok {
-				if len(rightHandSide) == 0 {
-					// Allow such cases:
-					//  resp, err := client.Do(req)
-					//  if err != nil {
-					//      return err
-					//  }
-					//  defer func() {
-					//      _ = resp.Body.Close()
-					//  }()
-					continue
-				}
 				if atLeastOneInListsMatch(rightHandSide, assignedInCurrentGroup) {
 					// Allow such cases:
 					//  resp, err := client.Do(req)
@@ -590,6 +579,14 @@ func (p *Processor) parseBlockStatements(statements []ast.Stmt) {
 					//      return err
 					//  }
 					//  defer cancel()
+					// Or such cases:
+					//  resp, err := client.Do(req)
+					//  if err != nil {
+					//      return err
+					//  }
+					//  defer func() {
+					//      _ = resp.Body.Close()
+					//  }()
 					continue
 				}
 			}
@@ -816,9 +813,10 @@ func (p *Processor) findRHS(node ast.Node) []string {
 	case *ast.BasicLit, *ast.SelectStmt, *ast.ChanType,
 		*ast.LabeledStmt, *ast.DeclStmt, *ast.BranchStmt,
 		*ast.TypeSpec, *ast.ArrayType, *ast.CaseClause,
-		*ast.CommClause, *ast.KeyValueExpr, *ast.MapType,
-		*ast.FuncLit:
+		*ast.CommClause, *ast.KeyValueExpr, *ast.MapType:
 	// Nothing to add to RHS
+	case *ast.FuncLit:
+		rhs = append(rhs, p.findRHS(t.Body)...)
 	case *ast.Ident:
 		return []string{t.Name}
 	case *ast.SelectorExpr:
